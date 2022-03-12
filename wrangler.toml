@@ -1,0 +1,6 @@
+compatibility_date = "2022-03-12"
+name = "npmproxy"
+account_id = "4b2075c812df26320947e4a467a8df30"
+workers_dev = true
+routes = ["npmProxy.toastpack.dev/*"]
+main = "./index.js"

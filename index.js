@@ -1,4 +1,4 @@
-import Router from './itty-router.mjs';
+import Router from './itty-router.js';
 
 const sendJSON = (data = {}, code = 200, headers = {}) => {
   return new Response(JSON.stringify(data), {
