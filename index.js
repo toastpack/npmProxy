@@ -1,4 +1,5 @@
-import Router from './itty-router.js';
+import Router from './packages/itty-router/index.js';
+import { valid, validRange, maxSatisfying } from './packages/semver/index.cjs';
 
 const sendJSON = (data = {}, code = 200, headers = {}) => {
   return new Response(JSON.stringify(data), {
@@ -10,6 +11,26 @@ const sendJSON = (data = {}, code = 200, headers = {}) => {
       ...headers,
     },
   });
+};
+
+const getVersionData = async (params) => {
+  let data = await (
+    await fetch(`https://registry.npmjs.org/${params.package}`)
+  ).json();
+  if (data.error) {
+    return sendJSON(data, 500);
+  }
+  let tags = data['dist-tags'];
+  let versions = Object.keys(data.versions);
+  let version;
+  if (valid(params.version)) {
+    version = params.version;
+  } else if (validRange(decodeURI(params.version))) {
+    version = maxSatisfying(versions, decodeURI(params.version));
+  } else {
+    version = tags[decodeURI(params.version)];
+  }
+  return data.versions[version];
 };
 
 const router = Router();
@@ -36,35 +57,30 @@ router.get('/:package', async ({ params }) => {
 });
 
 router.get('/:package/:version', async ({ params }) => {
-  let data = await (
-    await fetch(
-      `https://registry.npmjs.org/${params.package}/${params.version}`
-    )
-  ).json();
-  if (data.error) {
+  let info = await getVersionData(params);
+  if (!info) {
     return sendJSON(data, 500);
-  } else {
-    return sendJSON({
-      name: data['name'],
-      description: data['description'],
-      license: data['license'],
-      version: data['version'],
-      tgz: `https://npmProxy.toastpack.dev/${params.package}/${params.version}/tgz`,
-    });
   }
+  return sendJSON({
+    name: info['name'],
+    description: info['description'],
+    license: info['license'],
+    version: info['version'],
+    tgz: `https://npmProxy.toastpack.dev/${params.package}/${info['version']}/tgz`,
+  });
 });
 
 router.get('/:package/:version/tgz', async ({ params }) => {
-  let response = await fetch(
-    `https://registry.npmjs.org/${params.package}/-/${params.package}-${params.version}.tgz`
-  );
+  let info = await getVersionData(params);
+  let response = await fetch(info.dist.tarball);
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.indexOf('application/json') !== -1) {
-    return sendJSON(await response.json(), 500);
+    return sendJSON(
+      { error: `NPM fetch failed: ${(await response.json()).message}` },
+      500
+    );
   } else {
-    let { readable, writable } = new TransformStream();
-    response.body.pipeTo(writable);
-    return new Response(readable, response);
+    return response;
   }
 });
 
